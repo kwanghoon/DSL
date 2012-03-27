@@ -1,0 +1,11 @@
+-- An Embedded DSL for Parallel Reductions
+--
+-- Copyright (C) 2012 Kwanghoon Choi 
+--
+-- This module offers a very simple DSL allowing one to write a specification
+-- of parallel reduction. Each DSL program is compiled by the module to generate
+-- a parallelizable function in Haskell. 
+
+-- TODO:
+--  * Collaborate with the Monad-Par library
+--  * Nice demo examples (Currently, we have only two examples.)
