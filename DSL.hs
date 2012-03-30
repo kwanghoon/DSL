@@ -223,13 +223,13 @@ insRules =
 {-  
 A set of parallel reduction for the pointer jumping:
 
-Nil => Nil
-
-P a Nil => P a Nil
-
           l => l'
 -------------------------
 P a (P b l) => P (a+b) l'
+
+P a Nil => P a Nil
+
+Nil => Nil
 
 Note. The order of the rules is important.
 -}
@@ -237,14 +237,16 @@ Note. The order of the rules is important.
 ptrRules :: ParRedRules
 ptrRules =
   [ 
-    (  [], (PComb nil proc [], Comb nil proc [])),
-    (  [], (PComb p proc [pata, PComb nil proc []], Comb p proc [vara, Comb nil proc []])),
     (  [(l, l')], 
        (PComb p proc 
            [pata, 
             PComb p proc 
               [patb, l]
-           ], Comb p proc [Prim "+" [vara, varb], l']) )
+           ], Comb p proc [Prim "+" [vara, varb], l']) ),
+    (  [(l, l')], (PComb p proc [pata, l], Comb p proc [vara, l'])),
+--    (  [], (PComb p proc [pata, PComb nil proc []], Comb p proc [vara, Comb nil proc []])),
+    (  [], (PComb nil proc [], Comb nil proc []))
+
   ]
   
 {- Expression -}
@@ -293,39 +295,7 @@ expSKII = Comb "@" proc
             [Comb "S" proc []
             , Comb "K" proc []]
            , Comb "K" proc []]
-          , Comb "I" proc []]
-          
------
-type Env             = [(Name, Prop_Pat)]
-
-type CombPropPatEnvMaybeExp  = (Name, Prop_Pat, Env, Maybe Exp)
-type CombPropPatEnvMaybeExps = [CombPropPatEnvMaybeExp]
-  
-type CombPropPat  = (Name, Prop_Pat)
-type CombPropPats = [CombPropPat]
-
-type CombPropPatEnv  = (Name, Prop_Pat, Env)
-type CombPropPatEnvs = [CombPropPatEnv]
-
-type VarPropPat   = (Name, Prop_Pat)
-type VarPropPats  = [VarPropPat]
-type VarPropPatss = [VarPropPats]
-
-type VarPropPatPropPat   = (Name, Prop_Pat, Prop_Pat)
-type VarPropPatPropPats  = [VarPropPatPropPat]
-type VarPropPatPropPatss = [VarPropPatPropPats]
-
-type VarPropPatPropPatExp   = (Name, Prop_Pat, Prop_Pat, Exp)
-type VarPropPatPropPatExps  = [VarPropPatPropPatExp]
-type VarPropPatPropPatExpss = [VarPropPatPropPatExps]
-
-type VarPropPatPropPatPropPatExp   = (Name, Prop_Pat, Prop_Pat, Prop_Pat, Exp)
-type VarPropPatPropPatPropPatExps  = [VarPropPatPropPatPropPatExp]
-type VarPropPatPropPatPropPatExpss = [VarPropPatPropPatPropPatExps]
-
-type NamePat = (Name,Prop_Pat)
-type NamePats = [NamePat]
-type NamePatss = [NamePats]
+          , Comb "I" proc []]          
 
 {- Propositions specifying patterns of terms -}
 data Prop_Pat = P_CombPat Name 
@@ -402,6 +372,48 @@ len (P_AndPat p q) = Nothing
 len (P_NextPat p) = Nothing
 
 
+-----
+type Env             = [(Name, Prop_Pat)]
+type Link  = (Name, Prop_Pat, Prop_Pat, Name, [Prop_Pat], Exp)
+type Links = [Link]
+type Row   = [(Name, Prop_Pat, [(Name, Prop_Pat)], Maybe Exp, Links)]
+type Col   = [(Name, Prop_Pat, Prop_Pat, Name, [Prop_Pat], Exp)]
+
+type Permutation = [Int] --
+
+valid :: Permutation -> Int -> Bool
+valid pm n = sort pm == [1..n] && n == length pm
+
+-----
+type CombPropPatEnvMaybeExp  = (Name, Prop_Pat, Env, Maybe Exp)
+type CombPropPatEnvMaybeExps = [CombPropPatEnvMaybeExp]
+  
+type CombPropPat  = (Name, Prop_Pat)
+type CombPropPats = [CombPropPat]
+
+type CombPropPatEnv  = (Name, Prop_Pat, Env)
+type CombPropPatEnvs = [CombPropPatEnv]
+
+type VarPropPat   = (Name, Prop_Pat)
+type VarPropPats  = [VarPropPat]
+type VarPropPatss = [VarPropPats]
+
+type VarPropPatPropPat   = (Name, Prop_Pat, Prop_Pat)
+type VarPropPatPropPats  = [VarPropPatPropPat]
+type VarPropPatPropPatss = [VarPropPatPropPats]
+
+type VarPropPatPropPatExp   = (Name, Prop_Pat, Prop_Pat, Exp)
+type VarPropPatPropPatExps  = [VarPropPatPropPatExp]
+type VarPropPatPropPatExpss = [VarPropPatPropPatExps]
+
+type VarPropPatPropPatPropPatExp   = (Name, Prop_Pat, Prop_Pat, Prop_Pat, Exp)
+type VarPropPatPropPatPropPatExps  = [VarPropPatPropPatPropPatExp]
+type VarPropPatPropPatPropPatExpss = [VarPropPatPropPatPropPatExps]
+
+type NamePat = (Name,Prop_Pat)
+type NamePats = [NamePat]
+type NamePatss = [NamePats]
+
 -- 
 genRules :: ParRedRules -> (CombPropPatEnvMaybeExps, VarPropPatPropPatPropPatExpss, NamePatss)
 genRules rules = (concat cpmess, vpppess, npss)
@@ -455,63 +467,26 @@ genPPat pat = (head cpps, tail cpps, vpps)
           env = map (\(x,p) -> (x, minimize (p_root p))) p_env
       in  ((n, prop_minimized, env):cipps, vipps)
           
+-- Permutation          
+perm :: Permutation -> [a] -> [a]
+perm pm as  
+  | valid pm (length as) =
+    let perm' :: Permutation -> [a] -> [a]
+        perm' pm ls = snd (unzip (sortPair (zip pm ls)))
+    in  perm' pm as
 
--- Parent
-                           
-parent :: Name -> Prop_Pat -> Name -> Exp -> [Prop_Pat]    -- x -> (path from x to the root) -> x' -> [the parent of x']
-parent x p x' e = parent' (\p->p) e 
-  where
-    parent' :: (Prop_Pat -> Prop_Pat) -> Exp -> [Prop_Pat]
-    parent' p_fwd (Comb n k es) = 
-      let f (i,e) ps = parent' (mk_p_fwd i) e ++ ps
-          mk_p_fwd i p = p_fwd (P_AndPat (P_CombPat n) (P_DownPat i p))
-      in  foldr f [] (zip [1..] es)
+  | otherwise = error $ "perm: Unexpected permutations: " ++ show pm
           
-    parent' p_fwd (Var n k) =
-      if x' == n
-      then [p_fwd P_AnyPat]
-      else []
-           
-    parent' p_fwd (If cond et ee) = parent' p_fwd et ++ parent' p_fwd ee
-    parent' p_fwd (Let n be e) = 
-      if x' == n 
-      then [] 
-      else (parent' p_fwd be ++ parent' p_fwd e)
-    parent' p_fwd (Prim n es) = []
-    parent' p_fwd (Const n) = []
+sortPair :: Ord a => [(a,b)] -> [(a,b)]
+sortPair as = foldr ins [] as
+  where
+    ins a []     = [a]
+    ins a (b:bs) | smaller a b = a : ins b bs 
+                 | otherwise   = b : ins a bs
     
--- prCombPropPatEnvMaybeExps :: [(Name, Prop_Pat, Env, Maybe Exp)] -> IO ()
--- prCombPropPatEnvMaybeExps xs = mapM_ pr xs
---   where
---     pr (n, p, env, maybe_exp) = 
---       do putStr n
---          putStr " : "
---          putStrLn $ show $ p
---          putStrLn $ show $ env
---          putStr " => "
---          putStrLn $ show $ maybe_exp
+    smaller (i,v) (j,w) = if i<=j then True else False
+  
 
--- prVarPropPatPropPatPropPatExps :: [(Name, Prop_Pat, Prop_Pat, Prop_Pat, Exp)] -> IO ()
--- prVarPropPatPropPatPropPatExps xs = mapM_ pr xs
---   where
---     pr (n, p, r, q, e) = 
---       do putStr n
---          putStrLn " if matched with: "
---          putStr "\t"
---          putStrLn $ show $ p         
---          putStrLn "  Go up to the root: "
---          putStr "\t"
---          putStrLn $ show $ r
---          putStrLn "  Cross the bridge: "
---          putStr "\t"
---          putStrLn $ show $ q
---          putStrLn "  Go down to: "
---          putStr "\t"
---          case q of P_NextPat (P_VarPat m) -> putStrLn (show (map minimize (parent n p m e)))
---          putStrLn "  In: "
---          putStr "\t"
---          putStrLn $ show $ e
-         
 -- Examples
 exGenRules = genRules skiRules
           
@@ -521,18 +496,21 @@ exGenRules = genRules skiRules
                            
 --
 
-compile :: CombDecl -> Exp -> ParRedRules 
+compile :: CombDecl -> Exp -> ParRedRules -> (Permutation, Permutation)
            -> IO (DLExp, [DLExp], DLExp -> (Maybe DLExp, [DLExp]))
-compile cdecl exp rules = 
+compile cdecl exp rules (pm_row, pm_col) = 
   do putStrLn "Compiling..."
      putStrLn ""
-     mapM_ prRow rows
+     mapM_ prRow perm_rows
      putStrLn ""
-     mapM_ prCol cols
-     return (dlexp, cs, reduce cdecl rows cols)
+     mapM_ prCol perm_cols
+     return (dlexp, cs, reduce cdecl perm_rows perm_cols 1)
      
   where
-    (dlexp, cs)            = dlE cdecl rows cols exp
+    perm_rows = perm pm_row rows
+    perm_cols = perm pm_col cols
+    
+    (dlexp, cs)            = dlE cdecl perm_rows perm_cols exp 1
     (cpmes, vpppess, npss) = genRules rules
     
     rows = [ (n, p, env, maybe_exp
@@ -547,11 +525,6 @@ compile cdecl exp rules =
            , let P_NextPat (P_VarPat m) = s
            , let ts = map minimize (parent v q m e)]
            
-type Link  = (Name, Prop_Pat, Prop_Pat, Name, [Prop_Pat], Exp)
-type Links = [Link]
-type Row   = [(Name, Prop_Pat, [(Name, Prop_Pat)], Maybe Exp, Links)]
-type Col   = [(Name, Prop_Pat, Prop_Pat, Name, [Prop_Pat], Exp)]
-
 {- reduce 함수 구조
 
 reduce l =
@@ -561,11 +534,13 @@ reduce l =
         Comb => create a combinator
         x'   => if x=>x' then next ( E(x) l)
         n+m  => evaluate n+m
-        up   => upPtr l
+        up   => upptr l
 -}
 
-reduce :: CombDecl -> Row -> Col -> DLExp -> (Maybe DLExp, [DLExp])
-reduce combdecl rows cols l =
+type TimeTick = Integer
+
+reduce :: CombDecl -> Row -> Col -> TimeTick -> DLExp -> Future
+reduce combdecl rows cols timetick l =
   case maybe_exp of
     Nothing -> (Nothing, [])
     Just e  -> let (dle, cs) = evalExp l e
@@ -582,14 +557,22 @@ reduce combdecl rows cols l =
     evalExp :: DLExp -> Exp -> (DLExp, [DLExp])   -- The 2nd elements are combinators.
     evalExp l (Comb n k es) = (c, [c] ++ concat cs)
       where
-        c        = DLComb n ls up (reduce combdecl rows cols c)
+        c        = DLComb n ls up (reduce combdecl rows cols (timetick+1) c)  -- Make a future (During a parallel reduction)
         (ls, cs) = unzip [ evalExpLocal l [(n, i, c)] e | (i,e) <- zip [1..] es ]
         
-        up = upPtr updowns l
+        up = upptr ("call: " ++ showHead l ++ "; ") updowns l
     
     evalExp l (Var n' Proc) = (c, [])
       where 
-        c = next (path p l)
+        c = next ("call: " 
+                  ++ n' 
+                  ++ "; " 
+                  ++ showHead l 
+                  ++ "; " 
+                  ++ show p 
+                  ++ "; " 
+                  ++ showHead (path p l) 
+                  ++ ""              ) (path p l) -- Use next 
         n = head [ x | (x, _, _, y, _, _) <- links, y==n']
         p = head [ p | (x,p) <- env, x==n ]
         
@@ -637,7 +620,8 @@ reduce combdecl rows cols l =
     evalExpLocal :: DLExp -> [(Name, Int, DLExp)] -> Exp -> (DLExp, [DLExp])
     evalExpLocal l up (Comb n k es) = (c, [c] ++ concat cs)
       where
-        c  = DLComb n ls up (reduce combdecl rows cols c)
+        c  = DLComb n ls up 
+             (reduce combdecl rows cols (timetick+1) c)  -- Make a future (During parallel reduction)
         (ls, cs) = unzip [ evalExpLocal l [(n, i, c)] e | (i,e) <- zip [1..] es ]
     evalExpLocal l up e =
       evalExp l e
@@ -650,26 +634,42 @@ fetch n env l = path p l
 type UpDownss = [(Prop_Pat, Prop_Pat, [Prop_Pat])]
   
 -- If an Up ptr is * then take the next of the parent of the root as the next up ptr.
-upPtr :: UpDownss -> DLExp -> [(Name, Int, DLExp)]
-upPtr cols l = concat
-  [ if p_down == P_AnyPat
-    then upPtr cols (path p_up l)
-    else down p_down (next (path p_up l))  -- The lazy evaluation is necessary here,
+-- If there is no l satisfying p_qualifiers, upptr will return [], which means there is no parent.
+upptr :: String -> UpDownss -> DLExp -> [(Name, Int, DLExp)]
+upptr s cols l =
+  take 1 $ 
+  concat [ if p_down == P_AnyPat
+                   then upptr (s ++ "P_AnyPat") cols (path p_up l)
+                   else down p_down 
+         (next 
+          ("(2)" 
+           ++ s 
+           ++ show [(eval q l, q) | (q, u, ds) <- cols]
+           ++ "; p_up=> " 
+           ++ show p_up 
+           ++ "; p_down=>" 
+           ++ show p_down 
+           ++ "; l=>" 
+           ++ showHead l 
+           ++ "; p_up l =>" 
+           ++ showHead (path p_up l))
+          (path p_up l))  -- The lazy evaluation is necessary here,  -- Use next
                                            -- or the notion of pointer is required.
-  | (p_qualifier, p_up, p_downs) <- cols
-  , eval p_qualifier l
-  , p_down <- p_downs ]
+                 | (p_qualifier, p_up, p_downs) <- cols
+                 , eval p_qualifier l
+                 , p_down <- p_downs ]
   
-  where 
-    down :: Prop_Pat -> DLExp -> [(Name, Int, DLExp)]  -- Maybe
-    down (P_AnyPat) l = []  -- No parent exists.
-    down (P_DownPat i P_AnyPat) (l@(DLComb n dles _ _)) = [(n, i, l)]
-    down (P_DownPat i p) (DLComb n dles _ _) = down p (dles !! (i-1))
-    down (P_AndPat p q) l = down p l ++ down q l
-    down (P_CombPat m) (DLComb n _ _ _) = 
-      if n == m then [] 
-      else error ("upPtr/down: unexpectd case" ++ n ++ m)
-    down p l = error ("upPtr/down: unexpected case" ++ show p)
+-- This down function must be performed after a time tick
+-- since the second argument is a DLExp one obtained after the time tick.
+down :: Prop_Pat -> DLExp -> [(Name, Int, DLExp)]  -- Maybe
+down (P_AnyPat) l = []  -- No parent exists.
+down (P_DownPat i P_AnyPat) (l@(DLComb n dles _ _)) = [(n, i, l)]
+down (P_DownPat i p) (DLComb n dles _ _) = down p (dles !! (i-1))
+down (P_AndPat p q) l = down p l ++ down q l
+down (P_CombPat m) (DLComb n _ _ _) = 
+  if n == m then [] 
+  else error ("down: unexpectd case" ++ n ++ m)
+down p l = error ("down: unexpected case" ++ show p)
   
 -- Given l and p, return l' that one reaches after following a path specified by p.  
 -- Of course, p must be a proposition specifying a path, not a tree.
@@ -677,7 +677,9 @@ upPtr cols l = concat
 path :: Prop_Pat -> DLExp -> DLExp
 path (P_AnyPat) l  = l  
 path (P_DownPat i p) (DLComb _ dles _ _) = path p (dles !! (i-1))
-path (P_UpPat i p)   (DLComb _ _ [(_,j,l)] _)  = if i==j then l else error "path: unexpected up"
+path (P_UpPat i p)   (DLComb _ _ [(_,j,l)] _) = 
+  if i==j then path p l
+  else error "path: unexpected up"
 path p l = error "path: unexpected args"
 
 -- The eval function verifies the satisfiability of p in terms of l.
@@ -686,10 +688,36 @@ path p l = error "path: unexpected args"
 eval :: Prop_Pat -> DLExp -> Bool
 eval (P_CombPat n) (DLComb m _ _ _)      = n==m
 eval (P_DownPat i p) (DLComb _ dles _ _) = 1 <= i && i <= length dles && eval p (dles !! (i-1))
-eval (P_UpPat i p) (DLComb _ _ [(n,j,l)] _) = if i==j then eval p l else error "eval: unexpected up"
+eval (P_UpPat i p) (DLComb _ _ [(n,j,l)] _) = i==j && eval p l
+eval (P_UpPat i p) (DLComb _ _ [] _) = False
+eval (P_UpPat i p) (DLComb _ _ _ _) = error "eval: Unexpected up ptrs more than one"
 eval (P_AndPat p q) l                    = eval p l && eval q l
 eval (P_AnyPat) l                        = Prelude.True
 eval p l                                 = Prelude.False
+
+-- Parent
+parent :: Name -> Prop_Pat -> Name -> Exp -> [Prop_Pat]    -- x -> (path from x to the root) -> x' -> [the parent of x']
+parent x p x' e = parent' (\p->p) e 
+  where
+    parent' :: (Prop_Pat -> Prop_Pat) -> Exp -> [Prop_Pat]
+    parent' p_fwd (Comb n k es) = 
+      let f (i,e) ps = parent' (mk_p_fwd i) e ++ ps
+          mk_p_fwd i p = p_fwd (P_AndPat (P_CombPat n) (P_DownPat i p))
+      in  foldr f [] (zip [1..] es)
+          
+    parent' p_fwd (Var n k) =
+      if x' == n
+      then [p_fwd P_AnyPat]
+      else []
+           
+    parent' p_fwd (If cond et ee) = parent' p_fwd et ++ parent' p_fwd ee
+    parent' p_fwd (Let n be e) = 
+      if x' == n 
+      then [] 
+      else (parent' p_fwd be ++ parent' p_fwd e)
+    parent' p_fwd (Prim n es) = []
+    parent' p_fwd (Const n) = []
+    
 
 -- Printing patterns and environment,  if exists, with an expression.
 
@@ -730,26 +758,40 @@ prCol (v, q, r, m, ts, e) =
 
     
 -- examples
-compEx1 = compile skiCombDecl expSKII skiRules
-compEx2 = compile insCombDecl expINS insRules
-compEx3 = compile ptrCombDecl expPTR ptrRules
+compEx1 = compile skiCombDecl expSKII skiRules ([1..10], [1..10])
+compEx2 = compile insCombDecl expINS insRules ([1..7], [1..3])
+compEx3 = compile ptrCombDecl expPTR ptrRules ([1,4,2,3], [1..2])
+
+--
+par :: (DLExp -> (Maybe DLExp, [DLExp])) -> [DLExp] -> [DLExp]
+par reduce ls = concat $ map (snd . reduce) $ ls
 
 -- Run
 run compiledExp n = do
   (l, ls, reduce) <- compiledExp
   let h ls = par reduce ls
+  -- let hs   = l  : map next hs
   let lss  = ls : map h lss
-  let hs   = l  : map next hs
   putStrLn "Executing..."
   putStrLn ""
-  mapM_ pr (take n (zip hs lss))
-  where
-    pr (l,ls) = 
-      do putStrLn (show (ldE l))
-         putStrLn ""
+  let f ls =  mapM_ (\l -> do { prHead l; putStr "\t"}) ls
+  mapM_ (\ls -> do {f ls ; putStrLn ""} ) (take 10 lss)
+  -- mapM_ pr (take n (zip hs lss))
                    
-par :: (DLExp -> (Maybe DLExp, [DLExp])) -> [DLExp] -> [DLExp]
-par reduce ls = concat $ map (snd . reduce) $ ls
+--
+prHead :: DLExp -> IO ()
+prHead (l@(DLComb n ls _ _)) = putStr (showHead l)
+prHead _ = putStr "_"
+
+showHead :: DLExp -> String
+showHead (l@(DLComb n ls _ _)) = 
+  n 
+  ++ "(" 
+  ++ concat (intersperse "," (map showArg ls)) 
+  ++ ")"
+
+showArg (l@(DLConst n)) = n
+showArg _ = "_"
 
 -- examples
 runEx2 = run compEx2 6
@@ -769,28 +811,27 @@ data DLExp = DLComb Name [DLExp] UpExps Future -- UpExps is either [] or [dlexp]
            | DLConst Name
              deriving Show
                       
-dlexp_true  = "True"
-dlexp_false = "False"
+-- dlexp_true  = "True"
+-- dlexp_false = "False"
 
-next :: DLExp -> DLExp                      
-next (DLComb _ _ _ (Just f, _)) = f
-next (DLComb _ _ _ (Nothing, _)) = error $ "next: unexpected Nothing"
-next (DLConst n) = error $ "next: unexpected DLConst " ++ n
-next dlexp = error "next: unexpected DLExp"
+next :: String -> DLExp -> DLExp                      
+next s (DLComb _ _ _ (Just f, _)) = f    -- Read a future (Having a pointer to the next)
+next s (DLComb _ _ _ (Nothing, _)) = error $ "next: unexpected Nothing" ++ " " ++ s
+next s (DLConst n) = error $ "next: unexpected DLConst " ++ n
+next s dlexp = error "next: unexpected DLExp"
                       
 type UpExp = (Name, Int, DLExp)
 type UpExps = [UpExp]
 
 type Future = (Maybe DLExp, [DLExp])
 
-dlE :: CombDecl -> Row -> Col -> Exp -> (DLExp, [DLExp])
-dlE combdecl rows cols e = dlE' [] e 
+dlE :: CombDecl -> Row -> Col -> Exp -> TimeTick -> (DLExp, [DLExp])
+dlE combdecl rows cols e timetick = dlE' [] e 
   where
     dlE' :: UpExps -> Exp -> (DLExp, [DLExp])
     dlE' up (Comb n k es) = (l, [l] ++ concat cs)
       where
-        l  = DLComb n ls up f
-        f  = reduce combdecl rows cols l
+        l  = DLComb n ls up (reduce combdecl rows cols timetick l)  -- Make a future (Initialization)
         (ls, cs) = unzip [dlE' [(n,i,l)] e | (i,e) <- zip [1..] es]
     dlE' up (Var n k) = (DLVar n, [])
     dlE' up (If ce et ee) = (DLIf l0 l1 l2, cs0 ++ cs1 ++ cs2)
@@ -812,3 +853,5 @@ ldE :: DLExp -> Exp
 ldE (DLComb n ls up l) = Comb n proc (map ldE ls)
 ldE (DLConst n)        = Const n
 ldE dle                = error "ldE: unexpected pattern"  
+
+
